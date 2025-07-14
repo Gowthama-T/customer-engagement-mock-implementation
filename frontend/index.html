@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock Customer Engagement Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">📊 EngagePlatform</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="#upload">Upload Data</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>Customer Engagement Platform</h1>
+                <p>Simulate user interactions and track engagement metrics in real-time</p>
+            </div>
+        </section>
+
+        <section class="container">
+            <!-- User Selection -->
+            <div class="card">
+                <h2>👤 Select User</h2>
+                <p>Choose a user to simulate actions for:</p>
+                <div class="form-group">
+                    <label for="userSelect" class="form-label">Current User:</label>
+                    <select id="userSelect" class="form-input">
+                        <option value="">Loading users...</option>
+                    </select>
+                </div>
+                <button id="refreshUsers" class="btn btn-primary">🔄 Refresh Users</button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="card">
+                <h2>🎯 User Actions</h2>
+                <p>Click buttons below to simulate user interactions and track events:</p>
+                
+                <div class="actions-container">
+                    <div class="action-card">
+                        <h3>🔐 Login</h3>
+                        <p>Simulate user login event</p>
+                        <button id="loginBtn" class="btn btn-primary" data-action="Login">
+                            Track Login
+                        </button>
+                    </div>
+
+                    <div class="action-card">
+                        <h3>🛒 Add to Cart</h3>
+                        <p>Simulate adding items to shopping cart</p>
+                        <button id="addToCartBtn" class="btn btn-success" data-action="AddToCart">
+                            Track Add to Cart
+                        </button>
+                    </div>
+
+                    <div class="action-card">
+                        <h3>💳 Checkout</h3>
+                        <p>Simulate checkout process completion</p>
+                        <button id="checkoutBtn" class="btn btn-warning" data-action="Checkout">
+                            Track Checkout
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Status -->
+            <div class="card">
+                <h2>📊 Event Tracking Status</h2>
+                <div id="eventStatus">
+                    <p>Ready to track events. Select a user and click action buttons above.</p>
+                </div>
+                
+                <div id="recentEvents">
+                    <h3>Recent Events</h3>
+                    <div id="eventsList">
+                        <p class="text-center">No events tracked yet.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CSV Upload Section -->
+            <div class="card" id="upload">
+                <h2>📤 Upload User Data</h2>
+                <p>Upload a CSV file with user profiles (columns: user_id, name, email)</p>
+                
+                <div class="upload-area" id="uploadArea">
+                    <p>Drag and drop your CSV file here, or</p>
+                    <input type="file" id="csvFile" accept=".csv" style="display: none;">
+                    <button id="selectFileBtn" class="btn btn-primary">📁 Select File</button>
+                </div>
+                
+                <div id="uploadStatus"></div>
+                
+                <div class="mt-3">
+                    <h4>Sample CSV Format:</h4>
+                    <pre style="background: #f8f9fa; padding: 1rem; border-radius: 8px; overflow-x: auto;">user_id,name,email
+u006,John Doe,john@example.com
+u007,Jane Smith,jane@example.com</pre>
+                </div>
+            </div>
+
+            <!-- API Status -->
+            <div class="card">
+                <h2>🔌 API Status</h2>
+                <div id="apiStatus">
+                    <div class="loading"></div> Checking API connection...
+                </div>
+                
+                <div class="mt-2">
+                    <button id="testApiBtn" class="btn btn-primary">🧪 Test API Connection</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Include the mock SDK and main JavaScript -->
+    <script src="js/sdk.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
