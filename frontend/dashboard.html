@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard - Mock Customer Engagement Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="index.html" class="logo">📊 EngagePlatform</a>
+            <ul class="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="index.html#upload">Upload Data</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1>📈 Analytics Dashboard</h1>
+                <p>Real-time insights into user engagement and behavior</p>
+                <div class="mt-2">
+                    <button id="refreshDashboard" class="btn btn-primary">🔄 Refresh Data</button>
+                    <span id="lastUpdated" class="ml-2" style="color: rgba(255,255,255,0.8); font-size: 0.9rem;"></span>
+                </div>
+            </div>
+        </section>
+
+        <section class="container">
+            <!-- Key Metrics -->
+            <div class="card">
+                <h2>📊 Key Metrics</h2>
+                <div class="dashboard-grid">
+                    <div class="metric-card">
+                        <div class="metric-value" id="totalEvents">-</div>
+                        <div class="metric-label">Total Events</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-value" id="dailyActiveUsers">-</div>
+                        <div class="metric-label">Daily Active Users</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-value" id="totalUsers">-</div>
+                        <div class="metric-label">Total Users</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-value" id="engagementRate">-</div>
+                        <div class="metric-label">Engagement Rate</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="dashboard-grid">
+                <!-- Top Actions Chart -->
+                <div class="chart-container">
+                    <h3>🎯 Top Actions</h3>
+                    <canvas id="topActionsChart" width="400" height="200"></canvas>
+                </div>
+
+                <!-- Daily Events Chart -->
+                <div class="chart-container">
+                    <h3>📅 Daily Events (Last 7 Days)</h3>
+                    <canvas id="dailyEventsChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Event Timeline -->
+            <div class="card">
+                <h2>⏰ Recent Events</h2>
+                <div id="eventTimeline">
+                    <div class="loading"></div> Loading recent events...
+                </div>
+                
+                <div class="mt-2 text-center">
+                    <button id="loadMoreEvents" class="btn btn-primary">Load More Events</button>
+                </div>
+            </div>
+
+            <!-- User Management -->
+            <div class="card">
+                <h2>👥 User Management</h2>
+                <div id="usersList">
+                    <div class="loading"></div> Loading users...
+                </div>
+            </div>
+
+            <!-- Real-time Updates -->
+            <div class="card">
+                <h2>🔄 Real-time Updates</h2>
+                <div class="dashboard-grid">
+                    <div>
+                        <h4>Auto-refresh</h4>
+                        <label>
+                            <input type="checkbox" id="autoRefresh" checked>
+                            Enable auto-refresh (30s)
+                        </label>
+                    </div>
+                    
+                    <div>
+                        <h4>Status</h4>
+                        <div id="connectionStatus">
+                            <span class="status-message status-info">🟢 Connected</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export Options -->
+            <div class="card">
+                <h2>📤 Export Data</h2>
+                <p>Download analytics data for further analysis</p>
+                <div class="mt-2">
+                    <button id="exportEvents" class="btn btn-primary">📊 Export Events (CSV)</button>
+                    <button id="exportUsers" class="btn btn-success">👥 Export Users (CSV)</button>
+                    <button id="exportAnalytics" class="btn btn-warning">📈 Export Analytics (JSON)</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Include JavaScript -->
+    <script src="js/sdk.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
