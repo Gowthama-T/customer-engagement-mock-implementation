@@ -1,254 +1,353 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from datetime import datetime
+"""
+CrowdSafe AI - FastAPI Backend
+Real-time crowd monitoring and safety management system
+"""
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import json
-import io
-import csv
+import asyncio
+import cv2
+import numpy as np
+from datetime import datetime, timedelta
+import os
+from typing import List, Dict, Any
+import logging
+from dataclasses import dataclass, asdict
+import base64
+from io import BytesIO
+from PIL import Image
 
-from config import Config
-from models import db, User, Event
-from utils import calculate_analytics, process_csv_data, validate_event_data
+from .models import Alert, Analytics, EventLog
+from .ai_detector import CrowdDetector
+from .database import DatabaseManager
+from .config import Settings
 
-def create_app():
-    """Application factory pattern"""
-    app = Flask(__name__)
-    app.config.from_object(Config)
-    
-    # Initialize extensions
-    db.init_app(app)
-    CORS(app, origins=app.config['CORS_ORIGINS'])
-    
-    return app
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-app = create_app()
+# Initialize FastAPI app
+app = FastAPI(
+    title="CrowdSafe AI",
+    description="Real-time crowd monitoring and safety management system",
+    version="1.0.0"
+)
 
-# API Routes
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
-        'version': '1.0.0'
-    }), 200
+# Initialize components
+settings = Settings()
+db_manager = DatabaseManager()
+crowd_detector = CrowdDetector()
 
-@app.route('/api/event', methods=['POST'])
-def track_event():
-    """Track user events"""
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+        except:
+            self.disconnect(websocket)
+
+    async def broadcast(self, message: str):
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                disconnected.append(connection)
+        
+        # Remove disconnected connections
+        for conn in disconnected:
+            self.disconnect(conn)
+
+manager = ConnectionManager()
+
+# Global state
+current_analytics = Analytics()
+last_alert_time = datetime.now() - timedelta(seconds=settings.alert_cooldown_seconds)
+
+# Video processing state
+video_capture = None
+processing_active = False
+
+def initialize_video_source():
+    """Initialize video capture source"""
+    global video_capture
     try:
-        # Get JSON data from request
-        event_data = request.get_json()
+        if settings.video_source.isdigit():
+            video_capture = cv2.VideoCapture(int(settings.video_source))
+        else:
+            video_capture = cv2.VideoCapture(settings.video_source)
         
-        if not event_data:
-            return jsonify({'error': 'No JSON data provided'}), 400
+        if not video_capture.isOpened():
+            logger.error("Failed to open video source")
+            return False
         
-        # Validate event data
-        is_valid, message = validate_event_data(event_data)
-        if not is_valid:
-            return jsonify({'error': message}), 400
-        
-        # Parse timestamp
-        timestamp = datetime.fromisoformat(event_data['timestamp'].replace('Z', '+00:00'))
-        
-        # Create new event
-        new_event = Event(
-            user_id=event_data['user_id'],
-            action=event_data['action'],
-            timestamp=timestamp,
-            properties=json.dumps(event_data.get('properties', {}))
-        )
-        
-        # Save to database
-        db.session.add(new_event)
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Event tracked successfully',
-            'event_id': new_event.id
-        }), 201
-        
+        logger.info(f"Video source initialized: {settings.video_source}")
+        return True
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Failed to track event: {str(e)}'}), 500
+        logger.error(f"Error initializing video source: {e}")
+        return False
 
-@app.route('/api/upload', methods=['POST'])
-def upload_users():
-    """Upload user profiles via CSV"""
+async def process_video_frame():
+    """Process a single video frame"""
+    global current_analytics, last_alert_time
+    
+    if video_capture is None or not video_capture.isOpened():
+        return None
+    
+    ret, frame = video_capture.read()
+    if not ret:
+        return None
+    
     try:
-        # Check if file is in request
-        if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+        # Detect objects and analyze crowd
+        detections = crowd_detector.detect_objects(frame)
+        crowd_data = crowd_detector.analyze_crowd(frame, detections)
         
-        file = request.files['file']
+        # Update analytics
+        current_analytics.crowd_density = crowd_data['density']
+        current_analytics.person_count = crowd_data['person_count']
+        current_analytics.safety_score = crowd_data['safety_score']
+        current_analytics.last_updated = datetime.now()
         
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+        # Check for alerts
+        alert_triggered = False
+        alert_message = ""
         
-        if not file.filename.endswith('.csv'):
-            return jsonify({'error': 'File must be a CSV'}), 400
-        
-        # Read CSV content
-        csv_content = io.StringIO(file.stream.read().decode('utf-8'))
-        
-        # Process CSV data
-        result = process_csv_data(csv_content)
-        
-        if not result['success']:
-            return jsonify({'error': result['error']}), 400
-        
-        # Save users to database
-        users_created = 0
-        users_updated = 0
-        
-        for user_data in result['users']:
-            existing_user = User.query.filter_by(user_id=user_data['user_id']).first()
-            
-            if existing_user:
-                # Update existing user
-                existing_user.name = user_data['name']
-                existing_user.email = user_data['email']
-                users_updated += 1
-            else:
-                # Create new user
-                new_user = User(
-                    user_id=user_data['user_id'],
-                    name=user_data['name'],
-                    email=user_data['email']
+        if crowd_data['density'] > settings.crowd_density_threshold:
+            time_since_last_alert = datetime.now() - last_alert_time
+            if time_since_last_alert.seconds >= settings.alert_cooldown_seconds:
+                alert_triggered = True
+                alert_message = f"High crowd density detected: {crowd_data['density']:.2%}"
+                last_alert_time = datetime.now()
+                
+                # Create alert
+                alert = Alert(
+                    message=alert_message,
+                    severity="high",
+                    location="Main Area",
+                    crowd_density=crowd_data['density']
                 )
-                db.session.add(new_user)
-                users_created += 1
+                
+                # Save to database
+                await db_manager.save_alert(alert)
+                
+                # Log event
+                event_log = EventLog(
+                    event_type="alert",
+                    description=alert_message,
+                    data={"crowd_density": crowd_data['density']}
+                )
+                await db_manager.save_event_log(event_log)
         
-        db.session.commit()
+        # Draw detections on frame
+        annotated_frame = crowd_detector.draw_detections(frame, detections)
         
-        return jsonify({
-            'success': True,
-            'message': f'Successfully processed {result["count"]} users',
-            'users_created': users_created,
-            'users_updated': users_updated
-        }), 200
+        # Convert frame to base64 for transmission
+        _, buffer = cv2.imencode('.jpg', annotated_frame)
+        frame_b64 = base64.b64encode(buffer).decode('utf-8')
         
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Failed to upload users: {str(e)}'}), 500
-
-@app.route('/api/analytics', methods=['GET'])
-def get_analytics():
-    """Get analytics data for dashboard"""
-    try:
-        analytics_data = calculate_analytics()
+        # Prepare data for broadcast
+        data = {
+            "type": "video_frame",
+            "frame": frame_b64,
+            "analytics": asdict(current_analytics),
+            "alert": {
+                "triggered": alert_triggered,
+                "message": alert_message
+            } if alert_triggered else None
+        }
         
-        return jsonify({
-            'success': True,
-            'data': analytics_data,
-            'timestamp': datetime.utcnow().isoformat()
-        }), 200
-        
-    except Exception as e:
-        return jsonify({'error': f'Failed to fetch analytics: {str(e)}'}), 500
-
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    """Get all users"""
-    try:
-        users = User.query.all()
-        return jsonify({
-            'success': True,
-            'users': [user.to_dict() for user in users],
-            'count': len(users)
-        }), 200
+        return data
         
     except Exception as e:
-        return jsonify({'error': f'Failed to fetch users: {str(e)}'}), 500
+        logger.error(f"Error processing video frame: {e}")
+        return None
 
-@app.route('/api/events', methods=['GET'])
-def get_events():
-    """Get recent events with pagination"""
+async def video_processing_loop():
+    """Main video processing loop"""
+    global processing_active
+    
+    logger.info("Starting video processing loop")
+    processing_active = True
+    
+    while processing_active:
+        try:
+            data = await process_video_frame()
+            if data:
+                await manager.broadcast(json.dumps(data))
+            
+            # Control frame rate (30 FPS)
+            await asyncio.sleep(1/30)
+            
+        except Exception as e:
+            logger.error(f"Error in video processing loop: {e}")
+            await asyncio.sleep(1)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# Routes
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    """Serve the main dashboard"""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        
-        events = Event.query.order_by(Event.timestamp.desc()).paginate(
-            page=page, per_page=per_page, error_out=False
+        with open("frontend/dashboard.html", "r") as file:
+            content = file.read()
+        return HTMLResponse(content=content)
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Dashboard not found</h1>", status_code=404)
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time communication"""
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Handle incoming messages if needed
+            logger.info(f"Received WebSocket message: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+@app.post("/api/alerts")
+async def create_alert(alert_data: dict):
+    """Create a manual alert"""
+    try:
+        alert = Alert(
+            message=alert_data.get("message", "Manual alert"),
+            severity=alert_data.get("severity", "medium"),
+            location=alert_data.get("location", "Unknown"),
+            crowd_density=current_analytics.crowd_density
         )
         
-        return jsonify({
-            'success': True,
-            'events': [event.to_dict() for event in events.items],
-            'pagination': {
-                'page': page,
-                'pages': events.pages,
-                'per_page': per_page,
-                'total': events.total
-            }
-        }), 200
+        await db_manager.save_alert(alert)
         
+        # Broadcast alert
+        broadcast_data = {
+            "type": "manual_alert",
+            "alert": asdict(alert)
+        }
+        await manager.broadcast(json.dumps(broadcast_data))
+        
+        return {"status": "success", "alert_id": str(alert.id)}
     except Exception as e:
-        return jsonify({'error': f'Failed to fetch events: {str(e)}'}), 500
+        logger.error(f"Error creating alert: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Error handlers
+@app.get("/api/analytics")
+async def get_analytics():
+    """Get current analytics data"""
+    return asdict(current_analytics)
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
+@app.get("/api/logs")
+async def get_event_logs(limit: int = 100):
+    """Get recent event logs"""
+    try:
+        logs = await db_manager.get_event_logs(limit)
+        return {"logs": logs}
+    except Exception as e:
+        logger.error(f"Error retrieving logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return jsonify({'error': 'Internal server error'}), 500
+@app.get("/api/alerts")
+async def get_alerts(limit: int = 50):
+    """Get recent alerts"""
+    try:
+        alerts = await db_manager.get_alerts(limit)
+        return {"alerts": alerts}
+    except Exception as e:
+        logger.error(f"Error retrieving alerts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Database initialization
-
-def init_db():
-    """Initialize database and create sample data"""
-    with app.app_context():
-        # Create tables
-        db.create_all()
-        
-        # Check if sample data already exists
-        if User.query.count() == 0:
-            # Create sample users
-            sample_users = [
-                {'user_id': 'u001', 'name': 'Alice Johnson', 'email': 'alice@example.com'},
-                {'user_id': 'u002', 'name': 'Bob Smith', 'email': 'bob@example.com'},
-                {'user_id': 'u003', 'name': 'Charlie Brown', 'email': 'charlie@example.com'},
-                {'user_id': 'u004', 'name': 'Diana Wilson', 'email': 'diana@example.com'},
-                {'user_id': 'u005', 'name': 'Eve Davis', 'email': 'eve@example.com'}
-            ]
-            
-            for user_data in sample_users:
-                user = User(**user_data)
-                db.session.add(user)
-            
-            # Create sample events
-            sample_events = [
-                {'user_id': 'u001', 'action': 'Login', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u001', 'action': 'AddToCart', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u002', 'action': 'Login', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u003', 'action': 'AddToCart', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u002', 'action': 'Checkout', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u004', 'action': 'Login', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u005', 'action': 'AddToCart', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u003', 'action': 'Checkout', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u001', 'action': 'Checkout', 'timestamp': datetime.utcnow()},
-                {'user_id': 'u004', 'action': 'AddToCart', 'timestamp': datetime.utcnow()}
-            ]
-            
-            for event_data in sample_events:
-                event = Event(**event_data)
-                db.session.add(event)
-            
-            db.session.commit()
-            print("Sample data created successfully!")
-
-if __name__ == '__main__':
-    # Initialize database on startup
-    init_db()
+@app.post("/api/start-monitoring")
+async def start_monitoring():
+    """Start video monitoring"""
+    global processing_active
     
-    # Run the application
-    print("🚀 Starting Mock Customer Engagement Platform API...")
-    print("📊 Dashboard available at: http://localhost:8000")
-    print("🔌 API endpoints at: http://localhost:5000/api/")
+    if processing_active:
+        return {"status": "already_running"}
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    if not initialize_video_source():
+        raise HTTPException(status_code=500, detail="Failed to initialize video source")
+    
+    # Start video processing in background
+    asyncio.create_task(video_processing_loop())
+    
+    return {"status": "started"}
+
+@app.post("/api/stop-monitoring")
+async def stop_monitoring():
+    """Stop video monitoring"""
+    global processing_active, video_capture
+    
+    processing_active = False
+    
+    if video_capture:
+        video_capture.release()
+        video_capture = None
+    
+    return {"status": "stopped"}
+
+@app.get("/api/status")
+async def get_status():
+    """Get system status"""
+    return {
+        "monitoring_active": processing_active,
+        "connections": len(manager.active_connections),
+        "last_updated": current_analytics.last_updated.isoformat() if current_analytics.last_updated else None
+    }
+
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup"""
+    logger.info("🚀 CrowdSafe AI starting up...")
+    
+    # Initialize database
+    await db_manager.initialize()
+    
+    # Initialize AI detector
+    crowd_detector.initialize()
+    
+    logger.info("✅ CrowdSafe AI initialized successfully")
+
+# Shutdown event
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    global processing_active, video_capture
+    
+    logger.info("🛑 CrowdSafe AI shutting down...")
+    
+    processing_active = False
+    
+    if video_capture:
+        video_capture.release()
+        video_capture = None
+    
+    logger.info("✅ CrowdSafe AI shutdown complete")

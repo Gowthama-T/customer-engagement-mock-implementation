@@ -1,23 +1,47 @@
+"""
+CrowdSafe AI - Configuration Settings
+Centralized configuration management
+"""
+
 import os
-from dotenv import load_dotenv
+from typing import List
+from pydantic import BaseSettings
 
-# Load environment variables
-load_dotenv()
+class Settings(BaseSettings):
+    # MongoDB Configuration
+    mongodb_url: str = "mongodb://localhost:27017"
+    database_name: str = "crowdsafe_ai"
+    
+    # Video Source Configuration
+    video_source: str = "0"  # Default to webcam
+    
+    # AI Model Configuration
+    yolo_model_path: str = "yolov8n.pt"  # Will download automatically
+    confidence_threshold: float = 0.5
+    iou_threshold: float = 0.45
+    
+    # Alert Configuration
+    crowd_density_threshold: float = 0.8
+    alert_cooldown_seconds: int = 30
+    
+    # Server Configuration
+    host: str = "0.0.0.0"
+    port: int = 8000
+    log_level: str = "INFO"
+    
+    # CORS Configuration
+    cors_origins: List[str] = ["*"]
+    
+    # Security Configuration
+    secret_key: str = "your-secret-key-here"  # Change in production
+    
+    # Performance Configuration
+    max_connections: int = 100
+    frame_rate: int = 30
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
 
-class Config:
-    """Configuration class for Flask application"""
-    
-    # Flask settings
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    DEBUG = os.environ.get('FLASK_ENV') == 'development'
-    
-    # Database settings
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///engagement.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
-    # CORS settings
-    CORS_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
-    
-    # Upload settings
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-    UPLOAD_FOLDER = 'uploads'
+# Global settings instance
+settings = Settings()
