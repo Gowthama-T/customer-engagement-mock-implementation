@@ -3,133 +3,450 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analytics Dashboard - Mock Customer Engagement Platform</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>CrowdSafe AI - Real-Time Monitoring Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4a5568;
+        }
+
+        .logo i {
+            color: #667eea;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            background: #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        .status-indicator.active {
+            background: #48bb78;
+            color: white;
+        }
+
+        .status-indicator.inactive {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a6fd8;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        .video-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .video-container {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #1a202c;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #videoFeed {
+            width: 100%;
+            height: auto;
+            max-width: 100%;
+        }
+
+        .video-placeholder {
+            color: #a0aec0;
+            text-align: center;
+            font-size: 1.2rem;
+        }
+
+        .video-controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            background: #f7fafc;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            color: #718096;
+        }
+
+        .metric.crowd-density .metric-value {
+            color: #667eea;
+        }
+
+        .metric.safety-score .metric-value {
+            color: #48bb78;
+        }
+
+        .metric.person-count .metric-value {
+            color: #ed8936;
+        }
+
+        .metric.alerts .metric-value {
+            color: #f56565;
+        }
+
+        .alert-item {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid;
+        }
+
+        .alert-high {
+            background: #fed7d7;
+            border-color: #f56565;
+        }
+
+        .alert-medium {
+            background: #fefcbf;
+            border-color: #ecc94b;
+        }
+
+        .alert-low {
+            background: #c6f6d5;
+            border-color: #48bb78;
+        }
+
+        .alert-time {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .chart-container {
+            height: 200px;
+            margin-top: 1rem;
+        }
+
+        .map-container {
+            height: 250px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .bottom-section {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .log-item {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        .log-time {
+            color: #718096;
+            font-size: 0.8rem;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 1001;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: #48bb78;
+        }
+
+        .notification.error {
+            background: #f56565;
+        }
+
+        .notification.warning {
+            background: #ecc94b;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .bottom-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-    <header>
-        <nav class="container">
-            <a href="index.html" class="logo">📊 EngagePlatform</a>
-            <ul class="nav-links">
-                <li><a href="index.html">Home</a></li>
-                <li><a href="dashboard.html">Dashboard</a></li>
-                <li><a href="index.html#upload">Upload Data</a></li>
-            </ul>
-        </nav>
-    </header>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-shield-alt"></i>
+                CrowdSafe AI
+            </div>
+            <div class="header-controls">
+                <div id="statusIndicator" class="status-indicator inactive">
+                    <i class="fas fa-circle"></i>
+                    <span>Monitoring Inactive</span>
+                </div>
+                <button id="startBtn" class="btn btn-primary">
+                    <i class="fas fa-play"></i> Start Monitoring
+                </button>
+                <button id="stopBtn" class="btn btn-danger" style="display: none;">
+                    <i class="fas fa-stop"></i> Stop Monitoring
+                </button>
+            </div>
+        </div>
+    </div>
 
-    <main>
-        <section class="hero">
-            <div class="container">
-                <h1>📈 Analytics Dashboard</h1>
-                <p>Real-time insights into user engagement and behavior</p>
-                <div class="mt-2">
-                    <button id="refreshDashboard" class="btn btn-primary">🔄 Refresh Data</button>
-                    <span id="lastUpdated" class="ml-2" style="color: rgba(255,255,255,0.8); font-size: 0.9rem;"></span>
+    <div class="main-container">
+        <div class="video-section">
+            <div class="card-header">
+                <i class="fas fa-video"></i>
+                Live Video Feed
+            </div>
+            <div class="video-container">
+                <img id="videoFeed" style="display: none;" alt="Video Feed">
+                <div id="videoPlaceholder" class="video-placeholder">
+                    <i class="fas fa-video-slash"></i>
+                    <br>No video feed available
+                    <br><small>Click "Start Monitoring" to begin</small>
                 </div>
             </div>
-        </section>
+        </div>
 
-        <section class="container">
-            <!-- Key Metrics -->
+        <div class="sidebar">
             <div class="card">
-                <h2>📊 Key Metrics</h2>
-                <div class="dashboard-grid">
-                    <div class="metric-card">
-                        <div class="metric-value" id="totalEvents">-</div>
-                        <div class="metric-label">Total Events</div>
+                <div class="card-header">
+                    <i class="fas fa-chart-line"></i>
+                    Real-Time Analytics
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric crowd-density">
+                        <div class="metric-value" id="crowdDensity">0%</div>
+                        <div class="metric-label">Crowd Density</div>
                     </div>
-                    
-                    <div class="metric-card">
-                        <div class="metric-value" id="dailyActiveUsers">-</div>
-                        <div class="metric-label">Daily Active Users</div>
+                    <div class="metric safety-score">
+                        <div class="metric-value" id="safetyScore">100%</div>
+                        <div class="metric-label">Safety Score</div>
                     </div>
-                    
-                    <div class="metric-card">
-                        <div class="metric-value" id="totalUsers">-</div>
-                        <div class="metric-label">Total Users</div>
+                    <div class="metric person-count">
+                        <div class="metric-value" id="personCount">0</div>
+                        <div class="metric-label">People Detected</div>
                     </div>
-                    
-                    <div class="metric-card">
-                        <div class="metric-value" id="engagementRate">-</div>
-                        <div class="metric-label">Engagement Rate</div>
+                    <div class="metric alerts">
+                        <div class="metric-value" id="activeAlerts">0</div>
+                        <div class="metric-label">Active Alerts</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Charts Section -->
-            <div class="dashboard-grid">
-                <!-- Top Actions Chart -->
-                <div class="chart-container">
-                    <h3>🎯 Top Actions</h3>
-                    <canvas id="topActionsChart" width="400" height="200"></canvas>
-                </div>
-
-                <!-- Daily Events Chart -->
-                <div class="chart-container">
-                    <h3>📅 Daily Events (Last 7 Days)</h3>
-                    <canvas id="dailyEventsChart" width="400" height="200"></canvas>
-                </div>
-            </div>
-
-            <!-- Event Timeline -->
             <div class="card">
-                <h2>⏰ Recent Events</h2>
-                <div id="eventTimeline">
-                    <div class="loading"></div> Loading recent events...
+                <div class="card-header">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Recent Alerts
                 </div>
-                
-                <div class="mt-2 text-center">
-                    <button id="loadMoreEvents" class="btn btn-primary">Load More Events</button>
-                </div>
-            </div>
-
-            <!-- User Management -->
-            <div class="card">
-                <h2>👥 User Management</h2>
-                <div id="usersList">
-                    <div class="loading"></div> Loading users...
-                </div>
-            </div>
-
-            <!-- Real-time Updates -->
-            <div class="card">
-                <h2>🔄 Real-time Updates</h2>
-                <div class="dashboard-grid">
-                    <div>
-                        <h4>Auto-refresh</h4>
-                        <label>
-                            <input type="checkbox" id="autoRefresh" checked>
-                            Enable auto-refresh (30s)
-                        </label>
-                    </div>
-                    
-                    <div>
-                        <h4>Status</h4>
-                        <div id="connectionStatus">
-                            <span class="status-message status-info">🟢 Connected</span>
-                        </div>
+                <div id="alertsList">
+                    <div style="text-align: center; color: #718096; padding: 2rem;">
+                        No active alerts
                     </div>
                 </div>
             </div>
 
-            <!-- Export Options -->
             <div class="card">
-                <h2>📤 Export Data</h2>
-                <p>Download analytics data for further analysis</p>
-                <div class="mt-2">
-                    <button id="exportEvents" class="btn btn-primary">📊 Export Events (CSV)</button>
-                    <button id="exportUsers" class="btn btn-success">👥 Export Users (CSV)</button>
-                    <button id="exportAnalytics" class="btn btn-warning">📈 Export Analytics (JSON)</button>
+                <div class="card-header">
+                    <i class="fas fa-map-marker-alt"></i>
+                    Event Map
+                </div>
+                <div id="map" class="map-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-section">
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-chart-area"></i>
+                Crowd Density Trend
+            </div>
+            <div class="chart-container">
+                <canvas id="densityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-users"></i>
+                People Count History
+            </div>
+            <div class="chart-container">
+                <canvas id="peopleChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-list"></i>
+                Event Log
+            </div>
+            <div id="eventLog" style="max-height: 200px; overflow-y: auto;">
+                <div style="text-align: center; color: #718096; padding: 2rem;">
+                    No events logged
                 </div>
             </div>
-        </section>
-    </main>
+        </div>
+    </div>
 
-    <!-- Include JavaScript -->
-    <script src="js/sdk.js"></script>
-    <script src="js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

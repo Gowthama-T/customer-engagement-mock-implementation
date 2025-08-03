@@ -1,192 +1,92 @@
-# 🚀 Mock Customer Engagement Platform
+# CrowdSafe AI
 
-A portfolio project simulating key workflows of a Customer Engagement Platform (similar to MoEngage) demonstrating Implementation Analyst skills including SDK integration, API ingestion, user event tracking, and analytics dashboards.
+CrowdSafe AI is a real-time web application designed to monitor and manage public safety during large-scale events such as music festivals, sports events, or political rallies. It leverages AI-powered anomaly detection and real-time video processing to detect unsafe situations like overcrowding, violence, fire, stampedes, or unattended objects.
 
-## 🌟 Features
+## Features
 
-### Frontend
-- **Home Page**: Interactive buttons for user actions (Login, Add to Cart, Checkout)
-- **Analytics Dashboard**: Real-time visualization of user engagement metrics
-- **Responsive Design**: Modern UI with clean, professional styling
+- **Real-Time Video Processing**: Live video feed analysis from cameras or files
+- **AI-Powered Detection**: YOLOv8 model for object/person detection and crowd analysis
+- **Real-Time Dashboard**: Interactive dashboard displaying crowd density and safety metrics
+- **Alert System**: Automatic alerts when safety thresholds are exceeded
+- **Map Integration**: Visual representation of event zones and flagged areas
+- **Communication Tools**: Alert logging and communication panel for security staff
+- **Event Logging**: Comprehensive logging of all events and alerts for audits
 
-### Backend
-- **REST API**: Flask-based API for event tracking and data ingestion
-- **Event Processing**: Real-time user event collection and storage
-- **CSV Upload**: Bulk user profile import functionality
-- **Analytics Engine**: Aggregated metrics and reporting
+## Tech Stack
 
-### Analytics & Insights
-- **Total Events**: Track all user interactions
-- **Daily Active Users (DAU)**: Monitor user engagement trends
-- **Top Actions**: Identify most popular user behaviors
-- **Interactive Charts**: Powered by Chart.js
+- **Backend**: Python (FastAPI)
+- **Frontend**: HTML, CSS, JavaScript
+- **Real-Time Communication**: WebSockets
+- **Computer Vision & AI**: OpenCV, YOLOv8 (Ultralytics)
+- **Database**: MongoDB for logs and alerts
+- **DevOps**: Docker, GitHub Actions
 
-## 🛠️ Tech Stack
+## Installation
 
-- **Frontend**: HTML5, CSS3, JavaScript, Chart.js
-- **Backend**: Python Flask, SQLAlchemy
-- **Database**: SQLite (file-based for easy deployment)
-- **API Testing**: Postman collection included
-- **Deployment**: Ready for cloud deployment (Netlify/Vercel + Render/Heroku)
-
-## 📁 Project Structure
-
-```
-mock-engagement-platform/
-├── backend/
-│   ├── app.py                 # Flask application
-│   ├── models.py              # Database models
-│   ├── config.py              # Configuration settings
-│   ├── utils.py               # Utility functions
-│   ├── requirements.txt       # Python dependencies
-│   └── sample_data/
-│       ├── users.csv          # Sample user profiles
-│       └── events.json        # Sample events
-├── frontend/
-│   ├── index.html             # Home page
-│   ├── dashboard.html         # Analytics dashboard
-│   ├── css/
-│   │   └── style.css          # Styling
-│   └── js/
-│       ├── main.js            # Main application logic
-│       ├── dashboard.js       # Dashboard functionality
-│       └── sdk.js             # Mock SDK implementation
-├── docs/
-│   ├── api-documentation.md   # API endpoints guide
-│   ├── architecture.md        # System architecture
-│   └── postman-collection.json
-├── Dockerfile                 # Container configuration
-└── README.md                  # This file
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.8+
-- pip
-
-### Backend Setup
+1. Clone the repository:
 ```bash
-cd backend
+git clone <repository-url>
+cd crowdsafe-ai
+```
+
+2. Install Python dependencies:
+```bash
 pip install -r requirements.txt
-python app.py
 ```
-The API will be available at `http://localhost:5000`
 
-### Frontend Setup
+3. Set up MongoDB (local or cloud):
 ```bash
-cd frontend
-# Serve using Python's built-in server
-python -m http.server 8000
-```
-The frontend will be available at `http://localhost:8000`
-
-### Database Initialization
-The SQLite database will be automatically created when you first run the backend.
-
-## 📊 API Endpoints
-
-### Event Tracking
-- `POST /api/event` - Track user events
-- `GET /api/analytics` - Get analytics data
-- `POST /api/upload` - Upload user profiles (CSV)
-
-### Sample Event Payload
-```json
-{
-  "user_id": "u123",
-  "action": "AddToCart",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
+# For local MongoDB installation:
+# Follow MongoDB installation guide for your OS
 ```
 
-## 🎯 Key Implementation Highlights
-
-### SDK Integration Simulation
-- JavaScript snippet that automatically tracks user interactions
-- Real-time event posting to backend API
-- Error handling and retry mechanisms
-
-### Data Ingestion Pipeline
-- CSV parsing for bulk user profile uploads
-- Data validation and sanitization
-- Batch processing capabilities
-
-### Analytics Engine
-- Real-time metrics calculation
-- Time-series data aggregation
-- Performance-optimized queries
-
-## 🧪 Testing
-
-### Sample Data
-The project includes:
-- 5 dummy user profiles
-- 10 sample events across different actions
-- Realistic timestamps and user behaviors
-
-### API Testing
-Import the Postman collection from `docs/postman-collection.json` to test all endpoints.
-
-## 🌐 Deployment
-
-### Frontend (Netlify/Vercel)
+4. Configure environment variables:
 ```bash
-# Build and deploy frontend
-cd frontend
-# Upload to your preferred hosting service
+cp .env.example .env
+# Edit .env with your configuration
 ```
 
-### Backend (Render/Heroku)
+5. Run the application:
 ```bash
-# Deploy Flask API
-cd backend
-# Follow your cloud provider's deployment guide
+python main.py
 ```
 
-### Docker Deployment
+6. Access the dashboard at `http://localhost:8000`
+
+## Docker Setup
+
 ```bash
-# Build and run with Docker
-docker build -t engagement-platform .
-docker run -p 5000:5000 engagement-platform
+docker-compose up --build
 ```
 
-## 🏆 Portfolio Highlights
+## Configuration
 
-This project demonstrates:
-- **Full-Stack Development**: End-to-end implementation
-- **API Design**: RESTful services with proper status codes
-- **Data Visualization**: Interactive charts and metrics
-- **Real-time Processing**: Event streaming and analytics
-- **Data Engineering**: CSV ingestion and processing
-- **Modern UI/UX**: Responsive, professional design
-- **DevOps**: Containerization and deployment-ready code
+Create a `.env` file with the following variables:
 
-## 🔧 Configuration
-
-Environment variables (create `.env` file):
 ```
-FLASK_ENV=development
-DATABASE_URL=sqlite:///engagement.db
-SECRET_KEY=your-secret-key
+MONGODB_URL=mongodb://localhost:27017
+DATABASE_NAME=crowdsafe_ai
+VIDEO_SOURCE=0  # 0 for webcam, or path to video file
+CROWD_DENSITY_THRESHOLD=0.8
+ALERT_COOLDOWN_SECONDS=30
 ```
 
-## 📈 Future Enhancements
+## Usage
 
-- JWT-based authentication
-- Workflow automation (re-engagement notifications)
-- Real-time WebSocket connections
-- Advanced segmentation and targeting
-- A/B testing framework
+1. Start the application
+2. Access the web dashboard
+3. Configure camera sources and detection zones
+4. Monitor real-time crowd analytics
+5. Respond to alerts and manage safety incidents
 
-## 🤝 Contributing
+## API Endpoints
 
-This is a portfolio project, but feedback and suggestions are welcome!
+- `GET /`: Main dashboard
+- `WebSocket /ws`: Real-time updates
+- `POST /api/alerts`: Create manual alert
+- `GET /api/analytics`: Get crowd analytics
+- `GET /api/logs`: Retrieve event logs
 
-## 📄 License
+## License
 
-MIT License - see LICENSE file for details.
-
----
-
-Built with ❤️ as a portfolio demonstration of Implementation Analyst skills.
+MIT License

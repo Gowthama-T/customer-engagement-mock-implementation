@@ -1,503 +1,499 @@
 /**
- * Dashboard JavaScript for Mock Customer Engagement Platform
- * Handles analytics visualization, charts, and real-time updates
+ * CrowdSafe AI Dashboard - Real-time monitoring interface
+ * Handles WebSocket communication, video feed, charts, and alerts
  */
 
-class Dashboard {
+class CrowdSafeDashboard {
     constructor() {
+        this.ws = null;
+        this.isMonitoring = false;
         this.charts = {};
-        this.autoRefreshInterval = null;
-        this.currentPage = 1;
-        this.eventsPerPage = 10;
-        this.lastUpdateTime = null;
+        this.map = null;
+        this.alerts = [];
+        this.eventLogs = [];
+        
+        // Data arrays for charts
+        this.densityData = [];
+        this.peopleData = [];
+        this.timeLabels = [];
         
         this.init();
     }
 
-    async init() {
-        console.log('📊 Initializing Dashboard...');
+    init() {
+        this.setupWebSocket();
+        this.setupEventHandlers();
+        this.initializeCharts();
+        this.initializeMap();
+        this.loadInitialData();
         
-        // Setup event listeners
-        this.setupEventListeners();
-        
-        // Load initial data
-        await this.loadDashboardData();
-        
-        // Setup auto-refresh
-        this.setupAutoRefresh();
-        
-        console.log('✅ Dashboard initialized successfully');
+        console.log('🚀 CrowdSafe AI Dashboard initialized');
     }
 
-    setupEventListeners() {
-        // Refresh button
-        document.getElementById('refreshDashboard').addEventListener('click', () => {
-            this.loadDashboardData();
-        });
-
-        // Auto-refresh checkbox
-        document.getElementById('autoRefresh').addEventListener('change', (e) => {
-            if (e.target.checked) {
-                this.setupAutoRefresh();
-            } else {
-                this.clearAutoRefresh();
-            }
-        });
-
-        // Load more events button
-        document.getElementById('loadMoreEvents').addEventListener('click', () => {
-            this.loadMoreEvents();
-        });
-
-        // Export buttons
-        document.getElementById('exportEvents').addEventListener('click', () => {
-            this.exportData('events');
-        });
-
-        document.getElementById('exportUsers').addEventListener('click', () => {
-            this.exportData('users');
-        });
-
-        document.getElementById('exportAnalytics').addEventListener('click', () => {
-            this.exportData('analytics');
-        });
-    }
-
-    async loadDashboardData() {
-        console.log('🔄 Loading dashboard data...');
+    setupWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
         
         try {
-            // Show loading state
-            this.showLoadingState(true);
+            this.ws = new WebSocket(wsUrl);
             
-            // Load all data in parallel
-            const [analyticsResult, eventsResult, usersResult] = await Promise.all([
-                window.engage.getAnalytics(),
-                window.engage.getEvents(1, this.eventsPerPage),
-                window.engage.getUsers()
-            ]);
-
-            // Update metrics
-            if (analyticsResult.success) {
-                this.updateMetrics(analyticsResult.data.data);
-                this.updateCharts(analyticsResult.data.data);
-            }
-
-            // Update events timeline
-            if (eventsResult.success) {
-                this.updateEventTimeline(eventsResult.data.events);
-                this.currentPage = 1;
-            }
-
-            // Update users list
-            if (usersResult.success) {
-                this.updateUsersList(usersResult.data.users);
-            }
-
-            // Update last refresh time
-            this.lastUpdateTime = new Date();
-            this.updateLastUpdatedDisplay();
-
-            console.log('✅ Dashboard data loaded successfully');
-
+            this.ws.onopen = () => {
+                console.log('✅ WebSocket connected');
+                this.updateConnectionStatus(true);
+            };
+            
+            this.ws.onmessage = (event) => {
+                this.handleWebSocketMessage(event);
+            };
+            
+            this.ws.onclose = () => {
+                console.log('❌ WebSocket disconnected');
+                this.updateConnectionStatus(false);
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(() => {
+                    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+                        this.setupWebSocket();
+                    }
+                }, 3000);
+            };
+            
+            this.ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.showNotification('WebSocket connection error', 'error');
+            };
+            
         } catch (error) {
-            console.error('❌ Failed to load dashboard data:', error);
-            this.showError('Failed to load dashboard data: ' + error.message);
-        } finally {
-            this.showLoadingState(false);
+            console.error('Failed to setup WebSocket:', error);
+            this.showNotification('Failed to connect to server', 'error');
         }
     }
 
-    updateMetrics(data) {
-        // Update metric cards
-        document.getElementById('totalEvents').textContent = data.total_events || 0;
-        document.getElementById('dailyActiveUsers').textContent = data.daily_active_users || 0;
-        document.getElementById('totalUsers').textContent = data.total_users || 0;
-        
-        // Calculate engagement rate
-        const engagementRate = data.total_users > 0 
-            ? Math.round((data.daily_active_users / data.total_users) * 100) 
-            : 0;
-        document.getElementById('engagementRate').textContent = engagementRate + '%';
-    }
-
-    updateCharts(data) {
-        // Update Top Actions Chart
-        this.updateTopActionsChart(data.top_actions || []);
-        
-        // Update Daily Events Chart
-        this.updateDailyEventsChart(data.daily_events || []);
-    }
-
-    updateTopActionsChart(topActions) {
-        const ctx = document.getElementById('topActionsChart').getContext('2d');
-        
-        // Destroy existing chart if it exists
-        if (this.charts.topActions) {
-            this.charts.topActions.destroy();
+    handleWebSocketMessage(event) {
+        try {
+            const data = JSON.parse(event.data);
+            
+            switch (data.type) {
+                case 'video_frame':
+                    this.updateVideoFeed(data.frame);
+                    this.updateAnalytics(data.analytics);
+                    if (data.alert) {
+                        this.handleAlert(data.alert);
+                    }
+                    break;
+                    
+                case 'manual_alert':
+                    this.handleAlert(data.alert);
+                    break;
+                    
+                case 'system_status':
+                    this.updateSystemStatus(data);
+                    break;
+                    
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
         }
+    }
 
-        const labels = topActions.map(item => item.action);
-        const data = topActions.map(item => item.count);
-        const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe'];
+    setupEventHandlers() {
+        // Start/Stop monitoring buttons
+        document.getElementById('startBtn').addEventListener('click', () => {
+            this.startMonitoring();
+        });
+        
+        document.getElementById('stopBtn').addEventListener('click', () => {
+            this.stopMonitoring();
+        });
+    }
 
-        this.charts.topActions = new Chart(ctx, {
-            type: 'doughnut',
+    async startMonitoring() {
+        try {
+            const response = await fetch('/api/start-monitoring', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'started' || result.status === 'already_running') {
+                this.isMonitoring = true;
+                this.updateMonitoringUI(true);
+                this.showNotification('Monitoring started successfully', 'success');
+            } else {
+                this.showNotification('Failed to start monitoring', 'error');
+            }
+        } catch (error) {
+            console.error('Error starting monitoring:', error);
+            this.showNotification('Error starting monitoring', 'error');
+        }
+    }
+
+    async stopMonitoring() {
+        try {
+            const response = await fetch('/api/stop-monitoring', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'stopped') {
+                this.isMonitoring = false;
+                this.updateMonitoringUI(false);
+                this.showNotification('Monitoring stopped', 'warning');
+                
+                // Hide video feed
+                document.getElementById('videoFeed').style.display = 'none';
+                document.getElementById('videoPlaceholder').style.display = 'flex';
+            }
+        } catch (error) {
+            console.error('Error stopping monitoring:', error);
+            this.showNotification('Error stopping monitoring', 'error');
+        }
+    }
+
+    updateMonitoringUI(isActive) {
+        const statusIndicator = document.getElementById('statusIndicator');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        
+        if (isActive) {
+            statusIndicator.className = 'status-indicator active';
+            statusIndicator.innerHTML = '<i class="fas fa-circle"></i><span>Monitoring Active</span>';
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-flex';
+        } else {
+            statusIndicator.className = 'status-indicator inactive';
+            statusIndicator.innerHTML = '<i class="fas fa-circle"></i><span>Monitoring Inactive</span>';
+            startBtn.style.display = 'inline-flex';
+            stopBtn.style.display = 'none';
+        }
+    }
+
+    updateVideoFeed(frameData) {
+        const videoFeed = document.getElementById('videoFeed');
+        const videoPlaceholder = document.getElementById('videoPlaceholder');
+        
+        if (frameData) {
+            videoFeed.src = `data:image/jpeg;base64,${frameData}`;
+            videoFeed.style.display = 'block';
+            videoPlaceholder.style.display = 'none';
+        }
+    }
+
+    updateAnalytics(analytics) {
+        if (!analytics) return;
+        
+        // Update metric displays
+        document.getElementById('crowdDensity').textContent = 
+            `${(analytics.crowd_density * 100).toFixed(1)}%`;
+        document.getElementById('safetyScore').textContent = 
+            `${analytics.safety_score.toFixed(0)}%`;
+        document.getElementById('personCount').textContent = 
+            analytics.person_count;
+        document.getElementById('activeAlerts').textContent = 
+            analytics.active_alerts || 0;
+        
+        // Update charts with new data
+        this.updateCharts(analytics);
+    }
+
+    updateCharts(analytics) {
+        const now = new Date();
+        const timeLabel = now.toLocaleTimeString();
+        
+        // Add new data points
+        this.timeLabels.push(timeLabel);
+        this.densityData.push(analytics.crowd_density * 100);
+        this.peopleData.push(analytics.person_count);
+        
+        // Keep only last 20 data points
+        if (this.timeLabels.length > 20) {
+            this.timeLabels.shift();
+            this.densityData.shift();
+            this.peopleData.shift();
+        }
+        
+        // Update density chart
+        if (this.charts.density) {
+            this.charts.density.data.labels = [...this.timeLabels];
+            this.charts.density.data.datasets[0].data = [...this.densityData];
+            this.charts.density.update('none');
+        }
+        
+        // Update people chart
+        if (this.charts.people) {
+            this.charts.people.data.labels = [...this.timeLabels];
+            this.charts.people.data.datasets[0].data = [...this.peopleData];
+            this.charts.people.update('none');
+        }
+    }
+
+    handleAlert(alertData) {
+        if (!alertData || !alertData.triggered) return;
+        
+        // Add alert to list
+        this.alerts.unshift({
+            id: Date.now(),
+            message: alertData.message,
+            severity: 'high',
+            timestamp: new Date()
+        });
+        
+        // Keep only last 10 alerts
+        if (this.alerts.length > 10) {
+            this.alerts.pop();
+        }
+        
+        this.updateAlertsDisplay();
+        this.showNotification(alertData.message, 'warning');
+        
+        // Add to event log
+        this.addEventLog('ALERT', alertData.message);
+    }
+
+    updateAlertsDisplay() {
+        const alertsList = document.getElementById('alertsList');
+        
+        if (this.alerts.length === 0) {
+            alertsList.innerHTML = `
+                <div style="text-align: center; color: #718096; padding: 2rem;">
+                    No active alerts
+                </div>
+            `;
+            return;
+        }
+        
+        alertsList.innerHTML = this.alerts.map(alert => `
+            <div class="alert-item alert-${alert.severity}">
+                <div>${alert.message}</div>
+                <div class="alert-time">${alert.timestamp.toLocaleTimeString()}</div>
+            </div>
+        `).join('');
+    }
+
+    addEventLog(type, message) {
+        this.eventLogs.unshift({
+            type,
+            message,
+            timestamp: new Date()
+        });
+        
+        // Keep only last 50 logs
+        if (this.eventLogs.length > 50) {
+            this.eventLogs.pop();
+        }
+        
+        this.updateEventLogDisplay();
+    }
+
+    updateEventLogDisplay() {
+        const eventLog = document.getElementById('eventLog');
+        
+        if (this.eventLogs.length === 0) {
+            eventLog.innerHTML = `
+                <div style="text-align: center; color: #718096; padding: 2rem;">
+                    No events logged
+                </div>
+            `;
+            return;
+        }
+        
+        eventLog.innerHTML = this.eventLogs.map(log => `
+            <div class="log-item">
+                <div><strong>${log.type}:</strong> ${log.message}</div>
+                <div class="log-time">${log.timestamp.toLocaleTimeString()}</div>
+            </div>
+        `).join('');
+    }
+
+    initializeCharts() {
+        // Density chart
+        const densityCtx = document.getElementById('densityChart').getContext('2d');
+        this.charts.density = new Chart(densityCtx, {
+            type: 'line',
             data: {
-                labels: labels,
+                labels: [],
                 datasets: [{
-                    data: data,
-                    backgroundColor: colors.slice(0, data.length),
+                    label: 'Crowd Density (%)',
+                    data: [],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
                     borderWidth: 2,
-                    borderColor: '#fff'
+                    fill: true,
+                    tension: 0.4
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = ((context.parsed / total) * 100).toFixed(1);
-                                return `${context.label}: ${context.parsed} (${percentage}%)`;
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
                             }
                         }
                     }
-                }
-            }
-        });
-    }
-
-    updateDailyEventsChart(dailyEvents) {
-        const ctx = document.getElementById('dailyEventsChart').getContext('2d');
-        
-        // Destroy existing chart if it exists
-        if (this.charts.dailyEvents) {
-            this.charts.dailyEvents.destroy();
-        }
-
-        // Prepare data for last 7 days
-        const last7Days = [];
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            last7Days.push(date.toISOString().split('T')[0]);
-        }
-
-        const labels = last7Days.map(date => {
-            const d = new Date(date);
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        });
-
-        const data = last7Days.map(date => {
-            const dayData = dailyEvents.find(item => item.date === date);
-            return dayData ? dayData.count : 0;
-        });
-
-        this.charts.dailyEvents = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Events',
-                    data: data,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: '#667eea',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                },
                 plugins: {
                     legend: {
                         display: false
                     }
                 },
+                animation: {
+                    duration: 0
+                }
+            }
+        });
+        
+        // People chart
+        const peopleCtx = document.getElementById('peopleChart').getContext('2d');
+        this.charts.people = new Chart(peopleCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'People Count',
+                    data: [],
+                    backgroundColor: '#ed8936',
+                    borderColor: '#dd6b20',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 scales: {
                     y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.1)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.1)'
-                        }
+                        beginAtZero: true
                     }
                 },
-                elements: {
-                    point: {
-                        hoverRadius: 8
+                plugins: {
+                    legend: {
+                        display: false
                     }
+                },
+                animation: {
+                    duration: 0
                 }
             }
         });
     }
 
-    updateEventTimeline(events) {
-        const timeline = document.getElementById('eventTimeline');
+    initializeMap() {
+        // Initialize Leaflet map
+        this.map = L.map('map').setView([40.7128, -74.0060], 15); // Default to NYC
         
-        if (!events || events.length === 0) {
-            timeline.innerHTML = '<p class="text-center">No events found.</p>';
-            return;
-        }
-
-        const eventsHTML = events.map(event => {
-            const timestamp = new Date(event.timestamp);
-            const timeString = timestamp.toLocaleString();
-            
-            return `
-                <div class="status-message status-info">
-                    <strong>${event.action}</strong> - User: ${event.user_id}
-                    <br><small>📅 ${timeString}</small>
-                    ${event.properties && Object.keys(event.properties).length > 0 
-                        ? `<br><small>📝 Properties: ${JSON.stringify(event.properties)}</small>` 
-                        : ''}
-                </div>
-            `;
-        }).join('');
-
-        timeline.innerHTML = eventsHTML;
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(this.map);
+        
+        // Add sample event zone
+        const eventZone = L.circle([40.7128, -74.0060], {
+            color: '#667eea',
+            fillColor: '#667eea',
+            fillOpacity: 0.2,
+            radius: 100
+        }).addTo(this.map);
+        
+        eventZone.bindPopup('<b>Event Zone</b><br>Main monitoring area');
     }
 
-    async loadMoreEvents() {
-        const button = document.getElementById('loadMoreEvents');
-        const originalText = button.textContent;
-        
-        button.disabled = true;
-        button.textContent = 'Loading...';
-
+    async loadInitialData() {
         try {
-            this.currentPage++;
-            const result = await window.engage.getEvents(this.currentPage, this.eventsPerPage);
+            // Load initial alerts
+            const alertsResponse = await fetch('/api/alerts?limit=10');
+            const alertsData = await alertsResponse.json();
             
-            if (result.success && result.data.events.length > 0) {
-                // Append new events to existing timeline
-                const timeline = document.getElementById('eventTimeline');
-                const newEventsHTML = result.data.events.map(event => {
-                    const timestamp = new Date(event.timestamp);
-                    const timeString = timestamp.toLocaleString();
-                    
-                    return `
-                        <div class="status-message status-info">
-                            <strong>${event.action}</strong> - User: ${event.user_id}
-                            <br><small>📅 ${timeString}</small>
-                        </div>
-                    `;
-                }).join('');
-                
-                timeline.innerHTML += newEventsHTML;
-            } else {
-                button.textContent = 'No more events';
-                button.disabled = true;
-                return;
-            }
-
-        } catch (error) {
-            console.error('Failed to load more events:', error);
-            this.currentPage--; // Revert page increment
-        } finally {
-            if (button.textContent !== 'No more events') {
-                button.disabled = false;
-                button.textContent = originalText;
-            }
-        }
-    }
-
-    updateUsersList(users) {
-        const usersList = document.getElementById('usersList');
-        
-        if (!users || users.length === 0) {
-            usersList.innerHTML = '<p class="text-center">No users found.</p>';
-            return;
-        }
-
-        const tableHTML = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Created</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${users.map(user => `
-                        <tr>
-                            <td><strong>${user.user_id}</strong></td>
-                            <td>${user.name}</td>
-                            <td>${user.email}</td>
-                            <td>${new Date(user.created_at).toLocaleDateString()}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
-
-        usersList.innerHTML = tableHTML;
-    }
-
-    setupAutoRefresh() {
-        this.clearAutoRefresh();
-        
-        this.autoRefreshInterval = setInterval(() => {
-            console.log('🔄 Auto-refreshing dashboard...');
-            this.loadDashboardData();
-        }, 30000); // 30 seconds
-
-        this.updateConnectionStatus('🟢 Auto-refresh enabled');
-    }
-
-    clearAutoRefresh() {
-        if (this.autoRefreshInterval) {
-            clearInterval(this.autoRefreshInterval);
-            this.autoRefreshInterval = null;
-        }
-        
-        this.updateConnectionStatus('🔴 Auto-refresh disabled');
-    }
-
-    updateConnectionStatus(status) {
-        const statusDiv = document.getElementById('connectionStatus');
-        statusDiv.innerHTML = `<span class="status-message status-info">${status}</span>`;
-    }
-
-    updateLastUpdatedDisplay() {
-        if (this.lastUpdateTime) {
-            const timeString = this.lastUpdateTime.toLocaleTimeString();
-            document.getElementById('lastUpdated').textContent = `Last updated: ${timeString}`;
-        }
-    }
-
-    async exportData(type) {
-        try {
-            let data, filename;
-            
-            switch (type) {
-                case 'events':
-                    const eventsResult = await window.engage.getEvents(1, 1000); // Get more events for export
-                    if (!eventsResult.success) throw new Error('Failed to fetch events');
-                    data = this.convertToCSV(eventsResult.data.events);
-                    filename = `events_${new Date().toISOString().split('T')[0]}.csv`;
-                    break;
-                    
-                case 'users':
-                    const usersResult = await window.engage.getUsers();
-                    if (!usersResult.success) throw new Error('Failed to fetch users');
-                    data = this.convertToCSV(usersResult.data.users);
-                    filename = `users_${new Date().toISOString().split('T')[0]}.csv`;
-                    break;
-                    
-                case 'analytics':
-                    const analyticsResult = await window.engage.getAnalytics();
-                    if (!analyticsResult.success) throw new Error('Failed to fetch analytics');
-                    data = JSON.stringify(analyticsResult.data, null, 2);
-                    filename = `analytics_${new Date().toISOString().split('T')[0]}.json`;
-                    break;
-                    
-                default:
-                    throw new Error('Unknown export type');
+            if (alertsData.alerts) {
+                this.alerts = alertsData.alerts.map(alert => ({
+                    id: alert.id,
+                    message: alert.message,
+                    severity: alert.severity,
+                    timestamp: new Date(alert.timestamp)
+                }));
+                this.updateAlertsDisplay();
             }
             
-            this.downloadFile(data, filename);
+            // Load initial event logs
+            const logsResponse = await fetch('/api/logs?limit=20');
+            const logsData = await logsResponse.json();
+            
+            if (logsData.logs) {
+                this.eventLogs = logsData.logs.map(log => ({
+                    type: log.event_type.toUpperCase(),
+                    message: log.description,
+                    timestamp: new Date(log.timestamp)
+                }));
+                this.updateEventLogDisplay();
+            }
+            
+            // Check system status
+            const statusResponse = await fetch('/api/status');
+            const statusData = await statusResponse.json();
+            
+            if (statusData.monitoring_active) {
+                this.isMonitoring = true;
+                this.updateMonitoringUI(true);
+            }
             
         } catch (error) {
-            console.error('Export failed:', error);
-            this.showError('Export failed: ' + error.message);
+            console.error('Error loading initial data:', error);
         }
     }
 
-    convertToCSV(data) {
-        if (!data || data.length === 0) return '';
-        
-        const headers = Object.keys(data[0]);
-        const csvContent = [
-            headers.join(','),
-            ...data.map(row => 
-                headers.map(header => {
-                    const value = row[header];
-                    // Handle JSON objects and escape quotes
-                    if (typeof value === 'object') {
-                        return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
-                    }
-                    return `"${String(value).replace(/"/g, '""')}"`;
-                }).join(',')
-            )
-        ].join('\n');
-        
-        return csvContent;
-    }
-
-    downloadFile(content, filename) {
-        const blob = new Blob([content], { 
-            type: filename.endsWith('.json') ? 'application/json' : 'text/csv' 
-        });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-    }
-
-    showLoadingState(loading) {
-        const refreshBtn = document.getElementById('refreshDashboard');
-        
-        if (loading) {
-            refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '<div class="loading"></div> Loading...';
+    updateConnectionStatus(connected) {
+        // Update UI to show connection status
+        const statusElement = document.getElementById('statusIndicator');
+        if (connected) {
+            statusElement.style.border = '2px solid #48bb78';
         } else {
-            refreshBtn.disabled = false;
-            refreshBtn.innerHTML = '🔄 Refresh Data';
+            statusElement.style.border = '2px solid #f56565';
         }
     }
 
-    showError(message) {
-        console.error(message);
+    showNotification(message, type = 'info') {
+        // Remove existing notification
+        const existing = document.querySelector('.notification');
+        if (existing) {
+            existing.remove();
+        }
         
-        // You could add a global error display here
-        // For now, we'll just log it
-    }
-
-    // Get dashboard status for debugging
-    getStatus() {
-        return {
-            autoRefreshEnabled: !!this.autoRefreshInterval,
-            currentPage: this.currentPage,
-            lastUpdate: this.lastUpdateTime,
-            chartsInitialized: Object.keys(this.charts).length
-        };
+        // Create new notification
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Show notification
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 100);
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
+        }, 5000);
     }
 }
 
 // Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.dashboard = new Dashboard();
-    console.log('📈 Dashboard loaded successfully!');
+    window.crowdSafeDashboard = new CrowdSafeDashboard();
 });
-
-// Export for debugging
-window.Dashboard = Dashboard;
